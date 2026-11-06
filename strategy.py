@@ -2,7 +2,7 @@
 
 Signal (Gao-Han-Li-Zhou intraday momentum): sign(09:59 CT close - 17:00 CT
 session open), decided at 10:00 CT, filled 10:01 CT open, flat at 15:09 CT.
-Filter: overnight leg and 08:30-09:59 leg must share sign (both informed).
+Long-only: equity drift premium favors up-days.
 Risk: 3 MNQ with $300 close-based position stop => risk at entry $300
 (gap/slippage risk excepted). Dev evidence: edge concentrated 2020/2022;
 absent in NQ/ES 2010-2018 (exp022).
@@ -10,7 +10,6 @@ absent in NQ/ES 2010-2018 (exp022).
 import numpy as np
 
 QTY, STOP, PV = 3, 300.0, 2.0
-RTH_OPEN = 86400 + 30600   # 08:30 CT
 ENTRY = 86400 + 36060       # 10:01 CT, session-relative clock (17:00 CT = 61200)
 EXIT = 86400 + 54540        # 15:09 CT bar
 
@@ -36,13 +35,9 @@ def signals(panel):
             if j == en and t[en - 1] != ENTRY - 60:
                 continue  # truncated before decision bar
             base, reference = c[j - 2], o[st]
-            k = st + np.searchsorted(t[st:en], RTH_OPEN)
-            if base == reference or k >= j - 1:
-                continue
-            # require overnight leg (17:00->08:29) and RTH leg (08:30->09:59) to agree
-            if np.sign(c[k - 1] - reference) != np.sign(base - o[k]):
-                continue
-            qty = QTY if base > reference else -QTY
+            if base <= reference:
+                continue  # long-only: shorts earned ~1/5 of longs (exp019 ledger)
+            qty = QTY
             if j == en:
                 out[j - 1] = qty
                 continue
