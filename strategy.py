@@ -1,6 +1,4 @@
-"""Causal baseline, optional symbols. No requirement to manufacture market diversity.
-Slow 20-bar momentum, entries after 10:00 CT, flat at 14:00. Not claimed profitable.
-"""
+"""Causal MBT impulse-reversal research candidate; one micro contract."""
 import numpy as np
 
 
@@ -8,16 +6,26 @@ def signals(panel):
     result = {}
     for symbol, df in panel.items():
         out = np.zeros(len(df), dtype=np.int64)
-        # Two micros only, at most 0.2 standard equivalents total.
-        if symbol not in ('MES', 'MGC'):
-            result[symbol] = out
-            continue
-        for indices in df.groupby('session', sort=False).indices.values():
-            close = df.close.to_numpy()[indices]
-            sec = df.ct_sec.to_numpy()[indices]
-            # Rolling mean excludes future rows; warmup restarts each session.
-            for j in range(20, len(indices)):
-                if 36000 <= sec[j] < 50400:
-                    out[indices[j]] = int(np.sign(close[j] - close[j-20:j].mean()))
+        if symbol == "MBT":
+            for indices in df.groupby("session", sort=False).indices.values():
+                close = df.close.to_numpy()[indices]
+                sec = df.ct_sec.to_numpy()[indices]
+                returns = np.zeros(len(close), dtype=float)
+                if len(close) > 60:
+                    returns[60:] = close[60:] / close[:-60] - 1.0
+                position = 0
+                age = 0
+                stop = 0.0
+                for j in range(60, len(close)):
+                    if position:
+                        age += 1
+                        adverse = close[j] <= stop if position > 0 else close[j] >= stop
+                        if age >= 15 or adverse or sec[j] >= 52200:
+                            position = 0
+                    elif 27000 <= sec[j] < 50400 and abs(returns[j]) >= 0.01:
+                        position = -int(np.sign(returns[j]))
+                        age = 0
+                        stop = close[j] * (0.98 if position > 0 else 1.02)
+                    out[indices[j]] = position
         result[symbol] = out
     return result
