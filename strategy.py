@@ -1,36 +1,37 @@
-"""Causal MBT liquidation-continuation candidate; one micro contract."""
+"""Overnight equity risk-premium sleeve: long MNQ 17:00 CT -> 08:29 CT.
+
+Stop = 0.6 x lagged 20-session mean overnight range; size = floor($300 / stop$).
+Risk per trade <= $300 by construction (gap risk excepted).
+"""
 import numpy as np
+
+RISK, PV, STOP_K, LOOKBACK = 300.0, 2.0, 0.6, 20
 
 
 def signals(panel):
     result = {}
     for symbol, df in panel.items():
         out = np.zeros(len(df), dtype=np.int64)
-        if symbol == "MBT":
-            for indices in df.groupby("session", sort=False).indices.values():
-                close = df.close.to_numpy()[indices]
-                sec = df.ct_sec.to_numpy()[indices]
-                returns = np.zeros(len(close), dtype=float)
-                if len(close) > 60:
-                    returns[60:] = close[60:] / close[:-60] - 1.0
-                position = 0
-                age = 0
-                armed = True
-                stop = 0.0
-                for j in range(60, len(close)):
-                    if abs(returns[j]) < 0.005:
-                        armed = True
-                    if position:
-                        age += 1
-                        adverse = close[j] <= stop if position > 0 else close[j] >= stop
-                        if age >= 60 or adverse or sec[j] >= 54000:
-                            position = 0
-                            armed = False
-                    elif armed and 27000 <= sec[j] < 46800 and abs(returns[j]) >= 0.02:
-                        position = int(np.sign(returns[j]))
-                        age = 0
-                        armed = False
-                        stop = close[j] * (0.96 if position > 0 else 1.04)
-                    out[indices[j]] = position
+        if symbol == "MNQ":
+            high, low, close = df.high.to_numpy(), df.low.to_numpy(), df.close.to_numpy()
+            sec = df.ct_sec.to_numpy()
+            ranges = []  # completed prior sessions' overnight ranges only
+            for idx in df.groupby("session", sort=False).indices.values():
+                s = sec[idx]
+                night = idx[(s >= 61200) | (s < 30600)]
+                stop = np.mean(ranges[-LOOKBACK:]) * STOP_K if len(ranges) >= LOOKBACK else 0.0
+                qty = min(50, int(RISK / (stop * PV))) if stop > 0 else 0
+                if qty and len(night):
+                    entry, pos = None, qty
+                    for i in night:
+                        if 30540 <= sec[i] < 61200:  # 08:29 bar: target flat
+                            break
+                        if entry is None:
+                            entry = close[i]
+                        if close[i] <= entry - stop:
+                            break
+                        out[i] = pos
+                if len(night):
+                    ranges.append(high[night].max() - low[night].min())
         result[symbol] = out
     return result
