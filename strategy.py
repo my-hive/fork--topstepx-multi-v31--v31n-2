@@ -1,4 +1,4 @@
-"""Causal MBT impulse-reversal research candidate; one micro contract."""
+"""Causal MBT liquidation-continuation candidate; one micro contract."""
 import numpy as np
 
 
@@ -15,17 +15,22 @@ def signals(panel):
                     returns[60:] = close[60:] / close[:-60] - 1.0
                 position = 0
                 age = 0
+                armed = True
                 stop = 0.0
                 for j in range(60, len(close)):
+                    if abs(returns[j]) < 0.005:
+                        armed = True
                     if position:
                         age += 1
                         adverse = close[j] <= stop if position > 0 else close[j] >= stop
-                        if age >= 15 or adverse or sec[j] >= 52200:
+                        if age >= 60 or adverse or sec[j] >= 54000:
                             position = 0
-                    elif 27000 <= sec[j] < 50400 and abs(returns[j]) >= 0.01:
-                        position = -int(np.sign(returns[j]))
+                            armed = False
+                    elif armed and 27000 <= sec[j] < 46800 and abs(returns[j]) >= 0.02:
+                        position = int(np.sign(returns[j]))
                         age = 0
-                        stop = close[j] * (0.98 if position > 0 else 1.02)
+                        armed = False
+                        stop = close[j] * (0.96 if position > 0 else 1.04)
                     out[indices[j]] = position
         result[symbol] = out
     return result
